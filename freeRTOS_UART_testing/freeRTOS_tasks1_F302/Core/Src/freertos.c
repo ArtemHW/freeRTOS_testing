@@ -82,6 +82,15 @@ __weak void vApplicationTickHook( void )
 }
 /* USER CODE END 3 */
 
+/* USER CODE BEGIN VPORT_SUPPORT_TICKS_AND_SLEEP */
+__weak void vPortSuppressTicksAndSleep( TickType_t xExpectedIdleTime )
+{
+  // Generated when configUSE_TICKLESS_IDLE == 2.
+  // Function called in tasks.c (in portTASK_FUNCTION).
+  // TO BE COMPLETED or TO BE REPLACED by a user one, overriding that weak one.
+}
+/* USER CODE END VPORT_SUPPORT_TICKS_AND_SLEEP */
+
 /* Private application code --------------------------------------------------*/
 /* USER CODE BEGIN Application */
 

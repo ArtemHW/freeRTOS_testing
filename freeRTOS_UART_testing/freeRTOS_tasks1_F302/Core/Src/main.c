@@ -58,8 +58,8 @@ typedef struct
 	char rx;
 }buffer_uart;
 buffer_uart buffer;
-//char tx_buffer[TX_BUFFER_SIZE];
-//char rx_buffer[RX_BUFFER_SIZE];
+
+SemaphoreHandle_t Semaphore1;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -77,6 +77,9 @@ void task_GPIOC11(void);
 void task_GPIOC12(void);
 void vApplicationIdleHook( void );
 void vApplicationTickHook( void );
+void Timer1Callback( TimerHandle_t xTimer );
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin);
+void announcement(void);
 
 /* USER CODE END PFP */
 
@@ -128,16 +131,22 @@ int main(void)
 
   /* USER CODE BEGIN RTOS_SEMAPHORES */
   /* add semaphores, ... */
+  Semaphore1 = xSemaphoreCreateBinary();
+
   /* USER CODE END RTOS_SEMAPHORES */
 
   /* USER CODE BEGIN RTOS_TIMERS */
   /* start timers, add new ones, ... */
+  uint32_t pvTimerID_1 = 0;
+  TimerHandle_t Timer1;
+  Timer1 = xTimerCreate("Timer1", 500, pdTRUE, (void* const)&pvTimerID_1, Timer1Callback);
+  xTimerStart(Timer1, 1);
   /* USER CODE END RTOS_TIMERS */
 
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
   QueueHandle_t myQueue1;
-  myQueue1 = xQueueCreate(10, sizeof(char));
+  myQueue1 = xQueueCreate(30, sizeof(char));
   buffer.queueh = myQueue1;
   /* USER CODE END RTOS_QUEUES */
 
@@ -152,9 +161,7 @@ int main(void)
   xTaskCreate(sendUSART1, "send data", 64, (void*)&buffer.tx_buffer, 5, NULL);
   //TaskHandle_t receiveUSART1_handle;
   xTaskCreate(receiveUSART1, "receive data", 64, (void*)&buffer.tx_buffer, 5, NULL);
-  //xTaskCreate(task_GPIOC10, "task_GPIOC10", 64, NULL, 4, NULL);
-  //xTaskCreate(task_GPIOC11, "task_GPIOC11", 64, NULL, 3, NULL);
-  //xTaskCreate(task_GPIOC12, "task_GPIOC12", 64, NULL, 3, NULL);
+  xTaskCreate(announcement, "announcement", 64, NULL, 6, NULL);
 
   /* USER CODE END RTOS_THREADS */
 
@@ -313,12 +320,21 @@ static void MX_GPIO_Init(void)
 
   /* GPIO Ports Clock Enable */
   __HAL_RCC_GPIOC_CLK_ENABLE();
-  __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
+  __HAL_RCC_GPIOA_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOC, GPIO_PIN_2|GPIO_PIN_3|GPIO_PIN_10|GPIO_PIN_11
                           |GPIO_PIN_12, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, GPIO_PIN_RESET);
+
+  /*Configure GPIO pin : PC13 */
+  GPIO_InitStruct.Pin = GPIO_PIN_13;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /*Configure GPIO pins : PC2 PC3 PC10 */
   GPIO_InitStruct.Pin = GPIO_PIN_2|GPIO_PIN_3|GPIO_PIN_10;
@@ -326,6 +342,13 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PB13 */
+  GPIO_InitStruct.Pin = GPIO_PIN_13;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
 
   /*Configure GPIO pin : PC11 */
   GPIO_InitStruct.Pin = GPIO_PIN_11;
@@ -341,6 +364,10 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_HIGH;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
+  /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI15_10_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
+
 }
 
 /* USER CODE BEGIN 4 */
@@ -351,11 +378,8 @@ void sendUSART1( void* buffer_p)
 	{
 		HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_10);
 		buffer_pp = buffer_p;
-	    // Copy the contents of src_buffer to dest_buffer
-	    //memcpy(buffer_pp->tx_buffer, buffer_pp->rx_buffer, sizeof(buffer_pp->rx_buffer));
 		xQueueReceive(buffer_pp->queueh, &buffer_pp->tx, portMAX_DELAY);
 		HAL_UART_Transmit(&huart1, (uint8_t*) &buffer_pp->tx, sizeof(buffer_pp->tx), 100);
-		//xQueueSend(buffer_pp->queueh, &buffer_pp->tx_buffer, 2);
 		vTaskDelay(200);
 		HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_10);
 	}
@@ -373,8 +397,7 @@ void receiveUSART1( void * buffer_p)
 		{
 			xQueueSend(buffer_pp->queueh, &buffer_pp->rx, 1);
 		}
-		//osDelay(1);
-		vTaskDelay(5);
+		vTaskDelay(40);
 		HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_11);
 	}
 	 vTaskDelete(xTaskGetHandle("receive data"));
@@ -382,6 +405,8 @@ void receiveUSART1( void * buffer_p)
 
 void vApplicationIdleHook( void )
 {
+	HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_12);
+	//HAL_PWR_EnterSLEEPMode(PWR_MAINREGULATOR_ON, PWR_SLEEPENTRY_WFE);
 	HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_12);
 }
 
@@ -391,32 +416,46 @@ void vApplicationTickHook( void )
 	HAL_GPIO_WritePin(GPIOC, GPIO_PIN_2, 0);
 }
 
-void task_GPIOC10(void)
+
+void Timer1Callback( TimerHandle_t xTimer )
 {
-	for( ;; )
+	HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_13);
+	const uint32_t maxCount = 10;
+	uint32_t count;
+	count = (uint32_t) pvTimerGetTimerID(xTimer);
+	count++;
+	if(count >= maxCount)
 	{
-		HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_10);
-		vTaskDelay(2);
+		count = 0;
+		char message[] = {"Timer1\r\n"};
+		for(int i = 0; i<sizeof(message); i++)
+		{
+			xQueueSendToBack(buffer.queueh, (void* const) &message[i], 1);
+		}
 	}
-	vTaskDelete(xTaskGetHandle("task_GPIOC10"));
+	vTimerSetTimerID(xTimer, (void*) count);
+	HAL_GPIO_TogglePin(GPIOB, GPIO_PIN_13);
 }
 
-void task_GPIOC11(void)
+void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-	for( ;; )
-	{
-		HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_11);
-	}
-	vTaskDelete(xTaskGetHandle("task_GPIOC11"));
+	xSemaphoreGiveFromISR( Semaphore1, NULL );
 }
 
-void task_GPIOC12(void)
+void announcement(void)
 {
 	for( ;; )
 	{
-		HAL_GPIO_TogglePin(GPIOC, GPIO_PIN_12);
+		xSemaphoreTake(Semaphore1, portMAX_DELAY);
+		char message[] = {"ANNOUNCEMENT\r\n"};
+		vTaskDelay(pdMS_TO_TICKS(800));
+		xSemaphoreTake(Semaphore1, 1); // Takes a Semaphore1 because the button on PC13 may have noise
+		for(int i = 0; i<sizeof(message); i++)
+		{
+			xQueueSendToBack(buffer.queueh, (void* const) &message[i], 1);
+		}
+		taskYIELD();
 	}
-	vTaskDelete(xTaskGetHandle("task_GPIOC12"));
 }
 /* USER CODE END 4 */
 
