@@ -60,6 +60,7 @@ typedef struct
 buffer_uart buffer;
 
 SemaphoreHandle_t Semaphore1;
+SemaphoreHandle_t Semaphore2;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -80,7 +81,7 @@ void vApplicationTickHook( void );
 void Timer1Callback( TimerHandle_t xTimer );
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin);
 void announcement(void);
-
+void announcement2(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -132,7 +133,7 @@ int main(void)
   /* USER CODE BEGIN RTOS_SEMAPHORES */
   /* add semaphores, ... */
   Semaphore1 = xSemaphoreCreateBinary();
-
+  Semaphore2 = xSemaphoreCreateCounting(3, 0);
   /* USER CODE END RTOS_SEMAPHORES */
 
   /* USER CODE BEGIN RTOS_TIMERS */
@@ -162,6 +163,7 @@ int main(void)
   //TaskHandle_t receiveUSART1_handle;
   xTaskCreate(receiveUSART1, "receive data", 64, (void*)&buffer.tx_buffer, 5, NULL);
   xTaskCreate(announcement, "announcement", 64, NULL, 6, NULL);
+  xTaskCreate(announcement2, "announcement2", 64, NULL, 6, NULL);
 
   /* USER CODE END RTOS_THREADS */
 
@@ -440,6 +442,7 @@ void Timer1Callback( TimerHandle_t xTimer )
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
 	xSemaphoreGiveFromISR( Semaphore1, NULL );
+	xSemaphoreGiveFromISR( Semaphore2, NULL );
 }
 
 void announcement(void)
@@ -450,6 +453,21 @@ void announcement(void)
 		char message[] = {"ANNOUNCEMENT\r\n"};
 		vTaskDelay(pdMS_TO_TICKS(800));
 		xSemaphoreTake(Semaphore1, 1); // Takes a Semaphore1 because the button on PC13 may have noise
+		for(int i = 0; i<sizeof(message); i++)
+		{
+			xQueueSendToBack(buffer.queueh, (void* const) &message[i], 1);
+		}
+		taskYIELD();
+	}
+}
+
+void announcement2(void)
+{
+	for( ;; )
+	{
+		xSemaphoreTake(Semaphore2, portMAX_DELAY);
+		char message[] = {"sem2\r\n"};
+		vTaskDelay(pdMS_TO_TICKS(1500));
 		for(int i = 0; i<sizeof(message); i++)
 		{
 			xQueueSendToBack(buffer.queueh, (void* const) &message[i], 1);

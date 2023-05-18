@@ -65,7 +65,7 @@ main-build: freeRTOS_tasks1_F302.elf secondary-outputs
 
 # Tool invocations
 freeRTOS_tasks1_F302.elf freeRTOS_tasks1_F302.map: $(OBJS) $(USER_OBJS) E:\programs\STM_Cube_MX\Projects__\freeRTOS_tasks1_F302\STM32F302R8TX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "freeRTOS_tasks1_F302.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"E:\programs\STM_Cube_MX\Projects__\freeRTOS_tasks1_F302\STM32F302R8TX_FLASH.ld" --specs=nosys.specs -Wl,-Map="freeRTOS_tasks1_F302.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+	arm-none-eabi-gcc -o "freeRTOS_tasks1_F302.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"E:\programs\STM_Cube_MX\Projects__\freeRTOS_tasks1_F302\STM32F302R8TX_FLASH.ld" --specs=nosys.specs -Wl,-Map="freeRTOS_tasks1_F302.map" -Wl,--gc-sections -static -L../Middlewares/ST/ARM/DSP/Lib --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 
