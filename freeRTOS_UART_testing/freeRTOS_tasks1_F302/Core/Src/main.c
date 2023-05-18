@@ -61,6 +61,8 @@ buffer_uart buffer;
 
 SemaphoreHandle_t Semaphore1;
 SemaphoreHandle_t Semaphore2;
+
+EventGroupHandle_t CreatedEventGroup1;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -82,6 +84,9 @@ void Timer1Callback( TimerHandle_t xTimer );
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin);
 void announcement(void);
 void announcement2(void);
+void taskPC0(void);
+void taskPC1(void);
+void taskPC3(void);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -123,6 +128,7 @@ int main(void)
   MX_I2C1_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
+  CreatedEventGroup1 = xEventGroupCreate();
 
   /* USER CODE END 2 */
 
@@ -147,7 +153,7 @@ int main(void)
   /* USER CODE BEGIN RTOS_QUEUES */
   /* add queues, ... */
   QueueHandle_t myQueue1;
-  myQueue1 = xQueueCreate(30, sizeof(char));
+  myQueue1 = xQueueCreate(40, sizeof(char));
   buffer.queueh = myQueue1;
   /* USER CODE END RTOS_QUEUES */
 
@@ -164,6 +170,9 @@ int main(void)
   xTaskCreate(receiveUSART1, "receive data", 64, (void*)&buffer.tx_buffer, 5, NULL);
   xTaskCreate(announcement, "announcement", 64, NULL, 6, NULL);
   xTaskCreate(announcement2, "announcement2", 64, NULL, 6, NULL);
+  xTaskCreate(taskPC0, "taskPC0", 64, NULL, 6, NULL);
+  xTaskCreate(taskPC1, "taskPC1", 64, NULL, 6, NULL);
+  xTaskCreate(taskPC3, "taskPC3", 64, NULL, 6, NULL);
 
   /* USER CODE END RTOS_THREADS */
 
@@ -326,8 +335,7 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOA_CLK_ENABLE();
 
   /*Configure GPIO pin Output Level */
-  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_2|GPIO_PIN_3|GPIO_PIN_10|GPIO_PIN_11
-                          |GPIO_PIN_12, GPIO_PIN_RESET);
+  HAL_GPIO_WritePin(GPIOC, GPIO_PIN_2|GPIO_PIN_10|GPIO_PIN_11|GPIO_PIN_12, GPIO_PIN_RESET);
 
   /*Configure GPIO pin Output Level */
   HAL_GPIO_WritePin(GPIOB, GPIO_PIN_13, GPIO_PIN_RESET);
@@ -338,8 +346,14 @@ static void MX_GPIO_Init(void)
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
-  /*Configure GPIO pins : PC2 PC3 PC10 */
-  GPIO_InitStruct.Pin = GPIO_PIN_2|GPIO_PIN_3|GPIO_PIN_10;
+  /*Configure GPIO pins : PC0 PC1 PC3 */
+  GPIO_InitStruct.Pin = GPIO_PIN_0|GPIO_PIN_1|GPIO_PIN_3;
+  GPIO_InitStruct.Mode = GPIO_MODE_IT_RISING;
+  GPIO_InitStruct.Pull = GPIO_PULLDOWN;
+  HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /*Configure GPIO pins : PC2 PC10 */
+  GPIO_InitStruct.Pin = GPIO_PIN_2|GPIO_PIN_10;
   GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
   GPIO_InitStruct.Pull = GPIO_NOPULL;
   GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
@@ -367,6 +381,15 @@ static void MX_GPIO_Init(void)
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
 
   /* EXTI interrupt init*/
+  HAL_NVIC_SetPriority(EXTI0_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(EXTI0_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI1_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(EXTI1_IRQn);
+
+  HAL_NVIC_SetPriority(EXTI3_IRQn, 5, 0);
+  HAL_NVIC_EnableIRQ(EXTI3_IRQn);
+
   HAL_NVIC_SetPriority(EXTI15_10_IRQn, 5, 0);
   HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
@@ -441,8 +464,30 @@ void Timer1Callback( TimerHandle_t xTimer )
 
 void HAL_GPIO_EXTI_Callback(uint16_t GPIO_Pin)
 {
-	xSemaphoreGiveFromISR( Semaphore1, NULL );
-	xSemaphoreGiveFromISR( Semaphore2, NULL );
+	if(GPIO_Pin == GPIO_PIN_13)
+	{
+		xSemaphoreGiveFromISR( Semaphore1, NULL );
+		xSemaphoreGiveFromISR( Semaphore2, NULL );
+	}
+	if(GPIO_Pin == GPIO_PIN_0)
+	{
+		BaseType_t HigherPriorityTaskWoken;
+		xEventGroupSetBitsFromISR(CreatedEventGroup1, 0x1, &HigherPriorityTaskWoken);
+		portYIELD_FROM_ISR(HigherPriorityTaskWoken);
+
+	}
+	if(GPIO_Pin == GPIO_PIN_1)
+	{
+		BaseType_t HigherPriorityTaskWoken;
+		xEventGroupSetBitsFromISR(CreatedEventGroup1, 0x2, &HigherPriorityTaskWoken);
+		portYIELD_FROM_ISR(HigherPriorityTaskWoken);
+	}
+	if(GPIO_Pin == GPIO_PIN_3)
+	{
+		BaseType_t HigherPriorityTaskWoken;
+		xEventGroupSetBitsFromISR(CreatedEventGroup1, 0x3, &HigherPriorityTaskWoken);
+		portYIELD_FROM_ISR(HigherPriorityTaskWoken);
+	}
 }
 
 void announcement(void)
@@ -468,6 +513,49 @@ void announcement2(void)
 		xSemaphoreTake(Semaphore2, portMAX_DELAY);
 		char message[] = {"sem2\r\n"};
 		vTaskDelay(pdMS_TO_TICKS(1500));
+		for(int i = 0; i<sizeof(message); i++)
+		{
+			xQueueSendToBack(buffer.queueh, (void* const) &message[i], 1);
+		}
+		taskYIELD();
+	}
+}
+
+void taskPC0(void)
+{
+	for( ;; )
+	{
+		xEventGroupWaitBits(CreatedEventGroup1, 0x1, pdTRUE, pdTRUE, portMAX_DELAY);
+		char message[] = {"taskPC0\r\n"};
+		vTaskDelay(pdMS_TO_TICKS(500));
+		for(int i = 0; i<sizeof(message); i++)
+		{
+			xQueueSendToBack(buffer.queueh, (void* const) &message[i], 1);
+		}
+		taskYIELD();
+	}
+}
+void taskPC1(void)
+{
+	for( ;; )
+	{
+		xEventGroupWaitBits(CreatedEventGroup1, 0x2, pdTRUE, pdTRUE, portMAX_DELAY);
+		char message[] = {"taskPC1\r\n"};
+		vTaskDelay(pdMS_TO_TICKS(500));
+		for(int i = 0; i<sizeof(message); i++)
+		{
+			xQueueSendToBack(buffer.queueh, (void* const) &message[i], 1);
+		}
+		taskYIELD();
+	}
+}
+void taskPC3(void)
+{
+	for( ;; )
+	{
+		xEventGroupWaitBits(CreatedEventGroup1, 0x3, pdTRUE, pdTRUE, portMAX_DELAY);
+		char message[] = {"taskPC3\r\n"};
+		vTaskDelay(pdMS_TO_TICKS(500));
 		for(int i = 0; i<sizeof(message); i++)
 		{
 			xQueueSendToBack(buffer.queueh, (void* const) &message[i], 1);
